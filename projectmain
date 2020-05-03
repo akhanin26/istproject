@@ -1,0 +1,153 @@
+pip install quandl
+
+
+ -------------------------------------------------------------------------------------------------------------------- 
+
+import quandl as qd
+import pandas as pd
+import numpy as np
+import warnings
+import sys 
+warnings.filterwarnings('ignore')
+# list of tickers available - (https://s3.amazonaws.com/quandl-production-static/coverage/WIKI_PRICES.csv)
+
+
+
+
+ -------------------------------------------------------------------------------------------------------------------- 
+
+
+def get_stock_quotes(ticker):  # function to get price data for a stock
+    apikey = 'yoRWhEBbpwgKt7F9SeE-'
+    qd.ApiConfig.api_key = apikey
+    stock = f"WIKI/{ticker}"
+    quote = qd.get(stock, start_date="2015-01-01", end_date="2016-01-01") #timeframe is only 1 year because this data set is free and has some gaps
+    stock_stats = quote[['Adj. Close']]
+    return stock_stats
+    
+    
+  --------------------------------------------------------------------------------------------------------------------    
+    
+    
+def stocks_df(slist):  # function that creates a data frame with all the stock prices that are in a portfolio
+    port = pd.DataFrame()
+    s1 = get_stock_quotes(slist[0])
+    s2 = get_stock_quotes(slist[1])
+    s3 = get_stock_quotes(slist[2])
+    s4 = get_stock_quotes(slist[3])
+    port[slist[0]] = s1['Adj. Close']
+    port[slist[1]] = s2['Adj. Close']
+    port[slist[2]] = s3['Adj. Close']
+    port[slist[3]] = s4['Adj. Close']
+    return port
+
+
+ -------------------------------------------------------------------------------------------------------------------- 
+
+
+def port_return(weights, df): # a function that calculates portfolio return given the weights for each stock 
+    returns = df.pct_change()
+    mean_returns = returns.mean()
+    portfolio_return = ((np.sum(mean_returns * weights) * 252))
+    return portfolio_return
+    
+    
+    
+  --------------------------------------------------------------------------------------------------------------------    
+    
+    
+    
+    
+def port_vol(weights, df): # a function that calculates portfolio volatility given the weights
+    #df = stocks_df(stocks) - this line was eliminated because it slowed down the program significantly. 
+    returns = df.pct_change()
+    cm = returns.cov()
+    mean_returns = returns.mean()
+    wc = np.dot(cm, weights)
+    wc2 = np.dot(weights.T, wc)
+    psd = np.sqrt(wc2) * np.sqrt(252)
+    return psd
+  
+  
+  
+   -------------------------------------------------------------------------------------------------------------------- 
+  
+  
+  
+def simulation(df, number): #this function generates random weights and calculates and records random portfolio's return and volatility
+    results = np.zeros((7,number))
+    slist = list(df.columns)
+    for i in range(number):
+        #select random weights for portfolio holdings
+        weights = np.random.random(4)
+        weights /= np.sum(weights)
+
+        #store results in results array
+        results[0,i] = port_return(weights, df)
+        results[1,i] = port_vol(weights, df)
+        #store Sharpe Ratio (return / volatility) - risk free rate element excluded for simplicity
+        results[2,i] = results[0,i] / results[1,i]
+        #store weights of stocks in portfolio
+        results[3,i] = weights[0]
+        results[4,i] = weights[1]
+        results[5,i] = weights[2]
+        results[6,i] = weights[3]
+        results_frame = pd.DataFrame(results.T,columns=['Return','Volatility','Sharpe Ratio', slist[0],slist[1],slist[2],slist[3]])
+    return results_frame
+    
+ --------------------------------------------------------------------------------------------------------------------     
+    
+    
+print('Please reffer to the link below for the list of stocks that we have data on:')
+print('https://s3.amazonaws.com/quandl-production-static/coverage/WIKI_PRICES.csv')
+while True:
+    # Exit condition for a loop
+    ready = input('Enter anything to start, enter q to quit').lower()
+    if ready == 'q':
+        print('Quitting')
+        break
+        
+    # creating a list of stocks that will be in a portfolio    
+    user_stocks = []
+    print('Enter 4 stock tickers that you want to have in a portfolio (Ex. enter FB for Facebook)')
+    for i in range(4):
+        add = input(f'Enter stock #{i+1}: ')
+        user_stocks.append(add.upper().strip())
+
+        
+    #get input for number of stimulations, quit if negative number, or a string
+    try:
+        simulations = int(input('Enter a number of simulations you want to run (100 is the min reccomended number): '))
+        if simulations <= 0:
+            raise ValueError
+            
+        #input for risk/reward preference
+        preference = int(input('What is your risk/reward preference? \n Enter 1 for lowest risk portfolio \n Enter 2 for highest reward portfolio:'))
+        print('')
+        
+        #create stocks dataframe, run simulations, record returns volatility and weights. 
+        sdf = stocks_df(user_stocks)
+        stats = simulation(sdf, simulations)
+        
+        #identify portfolio with the best return and best risk
+        best_return_port = stats.iloc[stats['Sharpe Ratio'].idxmax()]
+        safest_port = stats.iloc[stats['Volatility'].idxmin()] 
+    
+        #print out portfolios accrodingly to the user preference
+        if preference == 1:
+            print('I have found a portfolio with the least amount of risk for you. Here are the statistics of this portfolio:')
+            print(safest_port)
+        elif preference == 2:
+            print('I have found a portfolio with the greatest return for you. Here are the statistics of this portfolio:')
+            print(best_return_port)
+        else: 
+            print('You must enter 1 or 2 in response to your risk/reward preference')    
+    except ValueError:
+        print('ERROR: You must enter a positive number')
+    except qd.NotFoundError:
+        print('ERROR: I could not find one of the stocks you have entered. Please reffer to the list of available stocks.')
+    except TypeError:
+        print('ERROR: Oops, looks like we are missing data for one of your stock. Please choose different stocks')
+    except NameError:
+        print('')
+
